@@ -43,6 +43,9 @@
         .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #edf2f7; font-size: 1.1rem; }
         .history-date { font-weight: bold; color: #4a5568; }
         .history-pts { font-weight: bold; color: #dd6b20; }
+        
+        /* 💡 見えない動画用のスタイル */
+        #dummy-video { position: absolute; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -51,7 +54,11 @@
     <h1>🔥 集中勉強タイマー</h1>
     <p>スタートしたら画面を触ったり別タブを開いたりしないでください！</p>
     
-    <!-- 💡 時間設定セレクトボックス -->
+    <!-- 💡 パソコンを騙すための、見えないダミー動画（超軽量の真っ白な動画データ） -->
+    <video id="dummy-video" loop playsinline muted>
+        <source src="data:video/mp4;base64,AAAAIGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAzVtb292AAAAAG12aGQAAAAA3uLuY97i7mMAAAAAA+gAAAAAAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAGWl扰b25jAAAAFHRyYWsAAABcdGtoZAAAAADe4u5j3uLuYwAAAAEAAAAAAAAA6AAAAAAAAAAAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAiBtZWRpYQAAACxtZGhkAAAAAN7i7mPe4u5jAAB9AAAAtbWAVcQAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAAVxtaW5mAAAAEHZtYWhkAAAAAAAQAAAAGGRpbmYAAAAcdXNyZAAAAA1yZWZjAAAAAHRyZWYAAAAQbHN0YwAAABRzdGJsAAAAF3N0c2QAAAAAAAABAAAAd2F2YzEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAFgAsAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAidmNjMQFUBf0A7v0YFwXu/+AAAAsYc3R0cwAAAAAAAAABAAAAAQAAfQAAAAFzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAfc3RzeiAAAAAAAAAAAAAAAQAAABAAAAAUc3RjbwAAAAAAAAABAAAAMAAAAG11ZHRhAAAAZXRpZHMAAABcdWR0YQAAAFR0YWdrAAAAUHRleHQAAAAATm9uZQAAY3BydAAAAEptZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZHRhAAAAAAAAAAAAAAAAAAAAAQAAGWlsdHN0AAAAEal0b28AAAALZGF0YQAAAAEAAAAA">
+    </video>
+
     <div class="setting-box" id="setting-area">
         <label for="time-select" style="font-weight: bold; display:block; margin-bottom:5px;">集中する時間を選択：</label>
         <select id="time-select">
@@ -72,19 +79,15 @@
     <div id="status-msg" class="alert"></div>
 </div>
 
-<!-- 💡 日別記録カレンダー（履歴リスト） -->
 <div class="history-container">
     <div class="history-title">📅 日別の獲得ポイント記録</div>
-    <ul id="history-list" class="history-list">
-        <!-- ここにJavaScriptで過去の記録が追加されます -->
-    </ul>
+    <ul id="history-list" class="history-list"></ul>
 </div>
 
 <script>
     let timerInterval;
     let pointInterval;
     let countdownInterval;
-    let wakeLock = null;
     
     let defaultMinutes = 30;
     let timeLeft = defaultMinutes * 60;
@@ -92,7 +95,6 @@
     let isRunning = false;
     let isMonitoring = false;
 
-    // DOM要素の取得
     const timerEl = document.getElementById('timer');
     const pointsEl = document.getElementById('points');
     const startBtn = document.getElementById('start-btn');
@@ -101,39 +103,16 @@
     const timeSelect = document.getElementById('time-select');
     const settingArea = document.getElementById('setting-area');
     const historyListEl = document.getElementById('history-list');
+    const dummyVideo = document.getElementById('dummy-video'); // 💡 ビデオ要素を取得
 
-    // 💡 画面スリープ防止機能 (Wake Lock API)
-    async function requestWakeLock() {
-        try {
-            if ('wakeLock' in navigator) {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('画面スリープ防止が有効化されました');
-            }
-        } catch (err) {
-            console.warn('スリープ防止の起動に失敗:', err);
-        }
-    }
-
-    function releaseWakeLock() {
-        if (wakeLock !== null) {
-            wakeLock.release();
-            wakeLock = null;
-            console.log('画面スリープ防止を解除しました');
-        }
-    }
-
-    // 今日の日付を取得 (YYYY/MM/DD 形式)
     function getTodayString() {
         const today = new Date();
         return `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
     }
 
-    // 💡 ローカルストレージから履歴を読み込んで表示
     function loadHistory() {
         historyListEl.innerHTML = '';
         const historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
-        
-        // 日付の降順（新しい順）に並び替えて表示
         const sortedDates = Object.keys(historyData).sort((a, b) => b.localeCompare(a));
         
         if (sortedDates.length === 0) {
@@ -149,34 +128,28 @@
         });
     }
 
-    // 💡 ポイントを日別データに反映・保存する関数
     function savePointsToHistory(ptsChange, isReset = false) {
         const todayStr = getTodayString();
         let historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
         
-        if (!historyData[todayStr]) {
-            historyData[todayStr] = 0;
-        }
+        if (!historyData[todayStr]) historyData[todayStr] = 0;
 
         if (isReset) {
-            // 一度触っちゃうと、現時点の今日のポイントが0になる（ペナルティ）
             historyData[todayStr] = 0;
         } else {
-            // 成功時はポイントを加算
             historyData[todayStr] += ptsChange;
         }
 
         localStorage.setItem('study_points_history', JSON.stringify(historyData));
-        loadHistory(); // 履歴表示を更新
+        loadHistory();
     }
 
-    // スタートボタンが押されたとき
     startBtn.addEventListener('click', () => {
         defaultMinutes = parseInt(timeSelect.value);
         timeLeft = defaultMinutes * 60;
         
         startBtn.disabled = true;
-        settingArea.style.opacity = "0.4"; // 設定エリアを薄くして触れなくする
+        settingArea.style.opacity = "0.4";
         timeSelect.disabled = true;
         
         statusMsg.textContent = "📢 スマホ/PCを平らな場所に置き、手を離してください！";
@@ -198,8 +171,7 @@
         }, 1000);
     });
 
-    // 実際の監視スタート処理
-    async function actualStart() {
+    function actualStart() {
         isRunning = true;
         isMonitoring = true;
         currentSessionPoints = 0;
@@ -208,10 +180,9 @@
         statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
         statusMsg.style.color = "#dd6b20";
 
-        // スリープ防止を起動
-        await requestWakeLock();
+        // 💡【最重要】タイマー開始と同時に「見えないダミー動画」を再生してスリープを絶対阻止！
+        dummyVideo.play().catch(err => console.log("動画再生エラー:", err));
 
-        // カウントダウンタイマー
         timerInterval = setInterval(() => {
             timeLeft--;
             let mins = Math.floor(timeLeft / 60);
@@ -223,20 +194,16 @@
             }
         }, 1000);
 
-        // ポイント加算 (5秒ごとに1ポイント)
         pointInterval = setInterval(() => {
             currentSessionPoints += 1;
             pointsEl.textContent = currentSessionPoints;
         }, 5000);
     }
 
-    // 🚨 誘惑に負けた（ペナルティ）の処理
     function penalty() {
         if (!isMonitoring) return;
         
-        // 今日の獲得ポイントを現時点で0にリセットする
         savePointsToHistory(0, true);
-        
         currentSessionPoints = 0;
         pointsEl.textContent = currentSessionPoints;
         statusMsg.textContent = "🚨 あ！触りましたね？本日の獲得ポイントが0にリセットされました！";
@@ -244,11 +211,13 @@
         endSession(false);
     }
 
-    // セッション終了処理
     function endSession(isSuccess) {
         clearInterval(timerInterval);
         clearInterval(pointInterval);
-        releaseWakeLock(); // スリープ防止を解除
+        
+        // 💡 終了したら動画を一時停止してリセット
+        dummyVideo.pause();
+        dummyVideo.currentTime = 0;
         
         isRunning = false;
         isMonitoring = false;
@@ -258,28 +227,10 @@
         timerEl.textContent = "--:--";
         
         if (isSuccess) {
-            // 集中成功：このセッションで稼いだポイントを今日の記録にプラスする
             savePointsToHistory(currentSessionPoints, false);
             statusMsg.textContent = `🎉 おめでとうございます！集中達成で ${currentSessionPoints} pt 獲得しました！`;
             statusMsg.style.color = "#38a169";
         }
     }
 
-    // 操作検知イベントリスナー
     window.addEventListener('touchstart', penalty);
-    window.addEventListener('click', penalty);
-    window.addEventListener('mousemove', () => {
-        if (isMonitoring) penalty();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden && isMonitoring) {
-            penalty();
-        }
-    });
-
-    // 💡 画面を最初から開いたときに履歴を読み込む
-    loadHistory();
-</script>
-
-</body>
