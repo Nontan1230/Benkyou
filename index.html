@@ -2,10 +2,140 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>勉強用サイト</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>集中勉強タイマー</title>
+    <style>
+        body {
+            font-family: 'Helvetica Neue', Arial, sans-serif;
+            text-align: center;
+            background-color: #f0f4f8;
+            color: #333;
+            padding: 50px 20px;
+        }
+        .container {
+            max-width: 400px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        h1 { color: #2b6cb0; }
+        .point-box, .timer-box {
+            font-size: 2rem;
+            font-weight: bold;
+            margin: 20px 0;
+        }
+        .point-box { color: #dd6b20; }
+        .timer-box { color: #4a5568; }
+        button {
+            background-color: #3182ce;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 1.1rem;
+            border-radius: 5px;
+            cursor: pointer;
+            width: 100%;
+        }
+        button:hover { background-color: #2b6cb0; }
+        button:disabled { background-color: #cbd5e0; cursor: not-allowed; }
+        .alert { color: #e53e3e; font-weight: bold; margin-top: 15px; }
+    </style>
 </head>
 <body>
-    <h1>勉強用サイトへようこそ！</h1>
-    <p>ここから学習コンテンツを作っていきます。</p>
+
+<div class="container">
+    <h1>🔥 集中タイマー</h1>
+    <p>スタートしたら、画面を触ったり別タブを開いたりしないでください！</p>
+    
+    <div class="timer-box">残り時間: <span id="timer">--:--</span></div>
+    <div class="point-box">現在のポイント: <span id="points">0</span> pt</div>
+    
+    <button id="start-btn">30分集中をスタート！</button>
+    <div id="status-msg" class="alert"></div>
+</div>
+
+<script>
+    let timerInterval;
+    let pointInterval;
+    let timeLeft = 30 * 60; // 30分（秒換算）
+    let points = 0;
+    let isRunning = false;
+
+    const timerEl = document.getElementById('timer');
+    const pointsEl = document.getElementById('points');
+    const startBtn = document.getElementById('start-btn');
+    const statusMsg = document.getElementById('status-msg');
+
+    // タイマー開始
+    startBtn.addEventListener('click', () => {
+        isRunning = true;
+        startBtn.disabled = true;
+        statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
+        statusMsg.style.color = "#dd6b20";
+
+        // カウントダウンタイマー (1秒ごと)
+        timerInterval = setInterval(() => {
+            timeLeft--;
+            let mins = Math.floor(timeLeft / 60);
+            let secs = timeLeft % 60;
+            timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+
+            if (timeLeft <= 0) {
+                endSession(true);
+            }
+        }, 1000);
+
+        // ポイント加算 (5秒ごとに1ポイントたまる)
+        pointInterval = setInterval(() => {
+            points += 1;
+            pointsEl.textContent = points;
+        }, 5000);
+    });
+
+    // 誘惑に負けた（ペナルティ）の処理
+    function penalty() {
+        if (!isRunning) return;
+        points = 0;
+        pointsEl.textContent = points;
+        statusMsg.textContent = "🚨 あ！画面を触ったか、別のページを見ましたね？ポイントがゼロになりました！";
+        statusMsg.style.color = "#e53e3e";
+        endSession(false);
+    }
+
+    // セッション終了処理
+    function endSession(isSuccess) {
+        clearInterval(timerInterval);
+        clearInterval(pointInterval);
+        isRunning = false;
+        startBtn.disabled = false;
+        timeLeft = 30 * 60;
+        timerEl.textContent = "--:--";
+        if (isSuccess) {
+            statusMsg.textContent = "🎉 おめでとうございます！集中達成です！";
+            statusMsg.style.color = "#38a169";
+        }
+    }
+
+    // 💡【ここが肝！】触ったこと・離れたことを検知する仕組み
+    
+    // 1. スマホで画面をタッチした、またはPCでクリック・マウス移動した
+    window.addEventListener('touchstart', penalty);
+    window.addEventListener('click', penalty);
+    window.addEventListener('mousemove', () => {
+        // マウスが動いた時（少し余裕を持たせるなら外してもOK）
+        if (isRunning) penalty();
+    });
+
+    // 2. スマホで他のアプリを開いた、PCで別タブに切り替えた
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && isRunning) {
+            penalty();
+        }
+    });
+</script>
+
 </body>
 </html>
+
