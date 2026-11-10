@@ -12,6 +12,7 @@
             color: #333;
             padding: 30px 10px;
             margin: 0;
+            overflow: hidden;
         }
         .container {
             max-width: 450px;
@@ -36,16 +37,24 @@
         .alert { color: #e53e3e; font-weight: bold; margin-top: 15px; font-size: 1.1rem; min-height: 50px; }
         .countdown-overlay { font-size: 3.5rem; color: #e53e3e; font-weight: bold; margin: 15px 0; display: none; }
         
-        /* 履歴・カレンダー表示部分 */
         .history-container { max-width: 450px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left; }
         .history-title { font-size: 1.3rem; font-weight: bold; color: #2c5282; border-bottom: 2px solid #ebf8ff; padding-bottom: 8px; margin-bottom: 15px; }
         .history-list { list-style: none; padding: 0; margin: 0; max-height: 250px; overflow-y: auto; }
         .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #edf2f7; font-size: 1.1rem; }
         .history-date { font-weight: bold; color: #4a5568; }
         .history-pts { font-weight: bold; color: #dd6b20; }
+
+        /* 💡 マウス移動を偽装するためのダミー要素 */
+        #mouse-fake-area {
+            position: absolute;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            z-index: -1; pointer-events: none;
+        }
     </style>
 </head>
 <body>
+
+<div id="mouse-fake-area"></div>
 
 <div class="container">
     <h1>🔥 集中勉強タイマー</h1>
@@ -80,13 +89,17 @@
     let timerInterval;
     let pointInterval;
     let countdownInterval;
-    let wakeLock = null; // 💡 標準の画面ロック防止機能に戻しました
+    let moveMouseInterval; // 💡 擬似マウス移動用
+    let wakeLock = null;
     
     let defaultMinutes = 30;
     let timeLeft = defaultMinutes * 60;
     let currentSessionPoints = 0;
     let isRunning = false;
     let isMonitoring = false;
+    
+    let fakeToggle = false; 
+    let lastFakeTime = 0; // 💡 自分が起こしたイベントを区別するため
 
     const timerEl = document.getElementById('timer');
     const pointsEl = document.getElementById('points');
@@ -96,26 +109,16 @@
     const timeSelect = document.getElementById('time-select');
     const settingArea = document.getElementById('setting-area');
     const historyListEl = document.getElementById('history-list');
+    const fakeArea = document.getElementById('mouse-fake-area');
 
-    // 💡 エラーを起こさない確実なスリープ防止（Wake Lock API）
     async function requestWakeLock() {
         if ('wakeLock' in navigator) {
-            try {
-                wakeLock = await navigator.wakeLock.request('screen');
-                console.log('スリープ防止が作動しました');
-            } catch (err) {
-                console.warn('スリープ防止の起動に失敗しました:', err);
-            }
+            try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
         }
     }
 
     function releaseWakeLock() {
-        if (wakeLock !== null) {
-            wakeLock.release().then(() => {
-                wakeLock = null;
-                console.log('スリープ防止を解除しました');
-            });
-        }
+        if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); }
     }
 
     function getTodayString() {
@@ -123,16 +126,15 @@
         return `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
     }
 
+    // 履歴読み込み・保存
     function loadHistory() {
         historyListEl.innerHTML = '';
         const historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
         const sortedDates = Object.keys(historyData).sort((a, b) => b.localeCompare(a));
-        
         if (sortedDates.length === 0) {
             historyListEl.innerHTML = '<li class="history-item" style="color:#94a3b8;">まだ記録はありません。</li>';
             return;
         }
-
         sortedDates.forEach(date => {
             const li = document.createElement('li');
             li.className = 'history-item';
@@ -144,40 +146,27 @@
     function savePointsToHistory(ptsChange, isReset = false) {
         const todayStr = getTodayString();
         let historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
-        
         if (!historyData[todayStr]) historyData[todayStr] = 0;
-
-        if (isReset) {
-            historyData[todayStr] = 0;
-        } else {
-            historyData[todayStr] += ptsChange;
-        }
-
+        if (isReset) { historyData[todayStr] = 0; } else { historyData[todayStr] += ptsChange; }
         localStorage.setItem('study_points_history', JSON.stringify(historyData));
         loadHistory();
     }
 
-    // 💡 スタートボタンのクリックイベント（エラーなく動きます！）
     startBtn.addEventListener('click', () => {
         defaultMinutes = parseInt(timeSelect.value);
         timeLeft = defaultMinutes * 60;
-        
         startBtn.disabled = true;
         settingArea.style.opacity = "0.4";
         timeSelect.disabled = true;
-        
-        statusMsg.textContent = "📢 スマホ/PCを平らな場所に置き、手を離してください！";
+        statusMsg.textContent = "📢 マウスから手を離し、キーボードに触らないでください！";
         statusMsg.style.color = "#e53e3e";
         countdownEl.style.display = "block";
         
         let count = 3;
         countdownEl.textContent = count;
-
         countdownInterval = setInterval(() => {
             count--;
-            if (count > 0) {
-                countdownEl.textContent = count;
-            } else {
+            if (count > 0) { countdownEl.textContent = count; } else {
                 clearInterval(countdownInterval);
                 countdownEl.style.display = "none";
                 actualStart();
@@ -190,22 +179,29 @@
         isMonitoring = true;
         currentSessionPoints = 0;
         pointsEl.textContent = currentSessionPoints;
-        
         statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
         statusMsg.style.color = "#dd6b20";
 
-        // タイマー開始と同時にスリープ防止をリクエスト
         await requestWakeLock();
+
+        // 💡【最重要】1秒ごとにブラウザ内で「マウス移動イベント」を発生させてWindowsの30秒ロックを破壊する
+        moveMouseInterval = setInterval(() => {
+            fakeToggle = !fakeToggle;
+            const fakeEvent = new MouseEvent('mousemove', {
+                clientX: fakeToggle ? 100 : 101, // 1ピクセルだけ位置を動かす
+                clientY: fakeToggle ? 100 : 101,
+                bubbles: true
+            });
+            lastFakeTime = Date.now(); // 💡「今プログラムが動かしたよ」という時間を記録
+            fakeArea.dispatchEvent(fakeEvent);
+        }, 1000);
 
         timerInterval = setInterval(() => {
             timeLeft--;
             let mins = Math.floor(timeLeft / 60);
             let secs = timeLeft % 60;
             timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-
-            if (timeLeft <= 0) {
-                endSession(true);
-            }
+            if (timeLeft <= 0) { endSession(true); }
         }, 1000);
 
         pointInterval = setInterval(() => {
@@ -214,13 +210,19 @@
         }, 5000);
     }
 
-    function penalty() {
+    // 🚨 誘惑に負けた（ペナルティ）の処理
+    function penalty(e) {
         if (!isMonitoring) return;
+
+        // 💡 プログラム自身が10ミリ秒以内に発生させたマウス移動イベントなら、ペナルティにせずスルーする
+        if (e.type === 'mousemove' && (Date.now() - lastFakeTime < 10)) {
+            return; 
+        }
         
         savePointsToHistory(0, true);
         currentSessionPoints = 0;
         pointsEl.textContent = currentSessionPoints;
-        statusMsg.textContent = "🚨 あ！触りましたね？本日の獲得ポイントが0にリセットされました！";
+        statusMsg.textContent = "🚨 あ！PCを操作しましたね？本日の獲得ポイントが0にリセットされました！";
         statusMsg.style.color = "#e53e3e";
         endSession(false);
     }
@@ -228,8 +230,8 @@
     function endSession(isSuccess) {
         clearInterval(timerInterval);
         clearInterval(pointInterval);
-        
-        releaseWakeLock(); // スリープ防止を安全に解除
+        clearInterval(moveMouseInterval); // 💡 擬似マウス移動を停止
+        releaseWakeLock();
         
         isRunning = false;
         isMonitoring = false;
@@ -245,20 +247,7 @@
         }
     }
 
-    window.addEventListener('touchstart', penalty);
+    // 💡 本物の人間が触ったかどうかを検知（キーボード入力もペナルティ対象に追加）
     window.addEventListener('click', penalty);
-    window.addEventListener('mousemove', () => {
-        if (isMonitoring) penalty();
-    });
-
-    document.addEventListener('visibilitychange', () => {
-        if (document.hidden && isMonitoring) {
-            penalty();
-        }
-    });
-
-    loadHistory();
-</script>
-
-</body>
-</html>
+    window.addEventListener('touchstart', penalty);
+    window.addEventListener('keydown', penalty); // キーボードを叩いてもアウト
