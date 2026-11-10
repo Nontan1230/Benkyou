@@ -40,7 +40,8 @@
         }
         button:hover { background-color: #2b6cb0; }
         button:disabled { background-color: #cbd5e0; cursor: not-allowed; }
-        .alert { color: #e53e3e; font-weight: bold; margin-top: 15px; }
+        .alert { color: #e53e3e; font-weight: bold; margin-top: 15px; font-size: 1.1rem; min-height: 50px; }
+        .countdown-overlay { font-size: 3rem; color: #e53e3e; font-weight: bold; margin: 20px 0; display: none; }
     </style>
 </head>
 <body>
@@ -49,6 +50,7 @@
     <h1>🔥 集中タイマー</h1>
     <p>スタートしたら、画面を触ったり別タブを開いたりしないでください！</p>
     
+    <div id="countdown" class="countdown-overlay">3</div>
     <div class="timer-box">残り時間: <span id="timer">--:--</span></div>
     <div class="point-box">現在のポイント: <span id="points">0</span> pt</div>
     
@@ -59,19 +61,44 @@
 <script>
     let timerInterval;
     let pointInterval;
+    let countdownInterval;
     let timeLeft = 30 * 60; // 30分（秒換算）
     let points = 0;
     let isRunning = false;
+    let isMonitoring = false; // 💡【新設】実際に監視を開始しているかどうかのフラグ
 
     const timerEl = document.getElementById('timer');
     const pointsEl = document.getElementById('points');
     const startBtn = document.getElementById('start-btn');
     const statusMsg = document.getElementById('status-msg');
+    const countdownEl = document.getElementById('countdown');
 
-    // タイマー開始
+    // スタートボタンが押されたとき
     startBtn.addEventListener('click', () => {
-        isRunning = true;
         startBtn.disabled = true;
+        statusMsg.textContent = "📢 スマホを机に置いて、手を離してください！";
+        statusMsg.style.color = "#e53e3e";
+        countdownEl.style.display = "block";
+        
+        let count = 3; // 3秒のカウントダウン
+        countdownEl.textContent = count;
+
+        countdownInterval = setInterval(() => {
+            count--;
+            if (count > 0) {
+                countdownEl.textContent = count;
+            } else {
+                clearInterval(countdownInterval);
+                countdownEl.style.display = "none";
+                actualStart(); // 💡 カウントダウン終了後に本当のスタート
+            }
+        }, 1000);
+    });
+
+    // 本当のスタート処理（監視を開始する）
+    function actualStart() {
+        isRunning = true;
+        isMonitoring = true; // 💡 ここから監視スタート（ボタンのクリック判定をスルーできる）
         statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
         statusMsg.style.color = "#dd6b20";
 
@@ -92,11 +119,12 @@
             points += 1;
             pointsEl.textContent = points;
         }, 5000);
-    });
+    }
 
-    // 誘惑に負けた（ペナルティ）の処理
+    // ペナルティ（リセット）の処理
     function penalty() {
-        if (!isRunning) return;
+        if (!isMonitoring) return; // 💡 監視中でなければペナルティにしない
+        
         points = 0;
         pointsEl.textContent = points;
         statusMsg.textContent = "🚨 あ！画面を触ったか、別のページを見ましたね？ポイントがゼロになりました！";
@@ -109,6 +137,7 @@
         clearInterval(timerInterval);
         clearInterval(pointInterval);
         isRunning = false;
+        isMonitoring = false; // 💡 監視終了
         startBtn.disabled = false;
         timeLeft = 30 * 60;
         timerEl.textContent = "--:--";
@@ -118,19 +147,15 @@
         }
     }
 
-    // 💡【ここが肝！】触ったこと・離れたことを検知する仕組み
-    
-    // 1. スマホで画面をタッチした、またはPCでクリック・マウス移動した
+    // 💡 触ったこと・離れたことを検知するイベントリスナー
     window.addEventListener('touchstart', penalty);
     window.addEventListener('click', penalty);
     window.addEventListener('mousemove', () => {
-        // マウスが動いた時（少し余裕を持たせるなら外してもOK）
-        if (isRunning) penalty();
+        if (isMonitoring) penalty();
     });
 
-    // 2. スマホで他のアプリを開いた、PCで別タブに切り替えた
     document.addEventListener('visibilitychange', () => {
-        if (document.hidden && isRunning) {
+        if (document.hidden && isMonitoring) {
             penalty();
         }
     });
@@ -138,4 +163,3 @@
 
 </body>
 </html>
-
