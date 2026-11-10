@@ -43,9 +43,6 @@
         .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #edf2f7; font-size: 1.1rem; }
         .history-date { font-weight: bold; color: #4a5568; }
         .history-pts { font-weight: bold; color: #dd6b20; }
-        
-        /* 💡 見えない動画用のスタイル */
-        #dummy-video { position: absolute; width: 1px; height: 1px; opacity: 0.01; pointer-events: none; }
     </style>
 </head>
 <body>
@@ -54,11 +51,6 @@
     <h1>🔥 集中勉強タイマー</h1>
     <p>スタートしたら画面を触ったり別タブを開いたりしないでください！</p>
     
-    <!-- 💡 パソコンを騙すための、見えないダミー動画（超軽量の真っ白な動画データ） -->
-    <video id="dummy-video" loop playsinline muted>
-        <source src="data:video/mp4;base64,AAAAIGZ0eXBtcDQyAAAAAG1wNDJpc29tYXZjMQAAAzVtb292AAAAAG12aGQAAAAA3uLuY97i7mMAAAAAA+gAAAAAAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACAAAAGWl扰b25jAAAAFHRyYWsAAABcdGtoZAAAAADe4u5j3uLuYwAAAAEAAAAAAAAA6AAAAAAAAAAAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAiBtZWRpYQAAACxtZGhkAAAAAN7i7mPe4u5jAAB9AAAAtbWAVcQAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAAAVxtaW5mAAAAEHZtYWhkAAAAAAAQAAAAGGRpbmYAAAAcdXNyZAAAAA1yZWZjAAAAAHRyZWYAAAAQbHN0YwAAABRzdGJsAAAAF3N0c2QAAAAAAAABAAAAd2F2YzEAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAFgAsAEgAAABIAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY//8AAAAidmNjMQFUBf0A7v0YFwXu/+AAAAsYc3R0cwAAAAAAAAABAAAAAQAAfQAAAAFzdHNjAAAAAAAAAAEAAAABAAAAAQAAAAEAAAAfc3RzeiAAAAAAAAAAAAAAAQAAABAAAAAUc3RjbwAAAAAAAAABAAAAMAAAAG11ZHRhAAAAZXRpZHMAAABcdWR0YQAAAFR0YWdrAAAAUHRleHQAAAAATm9uZQAAY3BydAAAAEptZXRhAAAAAAAAACFoZGxyAAAAAAAAAABtZHRhAAAAAAAAAAAAAAAAAAAAAQAAGWlsdHN0AAAAEal0b28AAAALZGF0YQAAAAEAAAAA">
-    </video>
-
     <div class="setting-box" id="setting-area">
         <label for="time-select" style="font-weight: bold; display:block; margin-bottom:5px;">集中する時間を選択：</label>
         <select id="time-select">
@@ -88,6 +80,7 @@
     let timerInterval;
     let pointInterval;
     let countdownInterval;
+    let wakeLock = null; // 💡 標準の画面ロック防止機能に戻しました
     
     let defaultMinutes = 30;
     let timeLeft = defaultMinutes * 60;
@@ -103,7 +96,27 @@
     const timeSelect = document.getElementById('time-select');
     const settingArea = document.getElementById('setting-area');
     const historyListEl = document.getElementById('history-list');
-    const dummyVideo = document.getElementById('dummy-video'); // 💡 ビデオ要素を取得
+
+    // 💡 エラーを起こさない確実なスリープ防止（Wake Lock API）
+    async function requestWakeLock() {
+        if ('wakeLock' in navigator) {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('スリープ防止が作動しました');
+            } catch (err) {
+                console.warn('スリープ防止の起動に失敗しました:', err);
+            }
+        }
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock !== null) {
+            wakeLock.release().then(() => {
+                wakeLock = null;
+                console.log('スリープ防止を解除しました');
+            });
+        }
+    }
 
     function getTodayString() {
         const today = new Date();
@@ -144,6 +157,7 @@
         loadHistory();
     }
 
+    // 💡 スタートボタンのクリックイベント（エラーなく動きます！）
     startBtn.addEventListener('click', () => {
         defaultMinutes = parseInt(timeSelect.value);
         timeLeft = defaultMinutes * 60;
@@ -171,7 +185,7 @@
         }, 1000);
     });
 
-    function actualStart() {
+    async function actualStart() {
         isRunning = true;
         isMonitoring = true;
         currentSessionPoints = 0;
@@ -180,8 +194,8 @@
         statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
         statusMsg.style.color = "#dd6b20";
 
-        // 💡【最重要】タイマー開始と同時に「見えないダミー動画」を再生してスリープを絶対阻止！
-        dummyVideo.play().catch(err => console.log("動画再生エラー:", err));
+        // タイマー開始と同時にスリープ防止をリクエスト
+        await requestWakeLock();
 
         timerInterval = setInterval(() => {
             timeLeft--;
@@ -215,9 +229,7 @@
         clearInterval(timerInterval);
         clearInterval(pointInterval);
         
-        // 💡 終了したら動画を一時停止してリセット
-        dummyVideo.pause();
-        dummyVideo.currentTime = 0;
+        releaseWakeLock(); // スリープ防止を安全に解除
         
         isRunning = false;
         isMonitoring = false;
@@ -234,3 +246,19 @@
     }
 
     window.addEventListener('touchstart', penalty);
+    window.addEventListener('click', penalty);
+    window.addEventListener('mousemove', () => {
+        if (isMonitoring) penalty();
+    });
+
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && isMonitoring) {
+            penalty();
+        }
+    });
+
+    loadHistory();
+</script>
+
+</body>
+</html>
