@@ -3,84 +3,187 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>集中勉強タイマー</title>
+    <title>集中勉強タイマー ＆ カレンダー記録</title>
     <style>
         body {
             font-family: 'Helvetica Neue', Arial, sans-serif;
             text-align: center;
             background-color: #f0f4f8;
             color: #333;
-            padding: 50px 20px;
+            padding: 30px 10px;
+            margin: 0;
         }
         .container {
-            max-width: 400px;
-            margin: 0 auto;
+            max-width: 450px;
+            margin: 0 auto 30px auto;
             background: white;
             padding: 30px;
             border-radius: 15px;
             box-shadow: 0 4px 15px rgba(0,0,0,0.1);
         }
-        h1 { color: #2b6cb0; }
-        .point-box, .timer-box {
-            font-size: 2rem;
-            font-weight: bold;
-            margin: 20px 0;
-        }
+        h1 { color: #2b6cb0; margin-top: 0; }
+        .setting-box { margin: 20px 0; }
+        select { padding: 10px; font-size: 1.1rem; border-radius: 5px; width: 100%; border: 1px solid #cbd5e0; }
+        .point-box, .timer-box { font-size: 2.2rem; font-weight: bold; margin: 15px 0; }
         .point-box { color: #dd6b20; }
         .timer-box { color: #4a5568; }
         button {
-            background-color: #3182ce;
-            color: white;
-            border: none;
-            padding: 12px 30px;
-            font-size: 1.1rem;
-            border-radius: 5px;
-            cursor: pointer;
-            width: 100%;
+            background-color: #3182ce; color: white; border: none; padding: 15px 30px;
+            font-size: 1.2rem; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%;
         }
         button:hover { background-color: #2b6cb0; }
         button:disabled { background-color: #cbd5e0; cursor: not-allowed; }
         .alert { color: #e53e3e; font-weight: bold; margin-top: 15px; font-size: 1.1rem; min-height: 50px; }
-        .countdown-overlay { font-size: 3rem; color: #e53e3e; font-weight: bold; margin: 20px 0; display: none; }
+        .countdown-overlay { font-size: 3.5rem; color: #e53e3e; font-weight: bold; margin: 15px 0; display: none; }
+        
+        /* 履歴・カレンダー表示部分 */
+        .history-container { max-width: 450px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left; }
+        .history-title { font-size: 1.3rem; font-weight: bold; color: #2c5282; border-bottom: 2px solid #ebf8ff; padding-bottom: 8px; margin-bottom: 15px; }
+        .history-list { list-style: none; padding: 0; margin: 0; max-height: 250px; overflow-y: auto; }
+        .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #edf2f7; font-size: 1.1rem; }
+        .history-date { font-weight: bold; color: #4a5568; }
+        .history-pts { font-weight: bold; color: #dd6b20; }
     </style>
 </head>
 <body>
 
 <div class="container">
-    <h1>🔥 集中タイマー</h1>
-    <p>スタートしたら、画面を触ったり別タブを開いたりしないでください！</p>
+    <h1>🔥 集中勉強タイマー</h1>
+    <p>スタートしたら画面を触ったり別タブを開いたりしないでください！</p>
     
+    <!-- 💡 時間設定セレクトボックス -->
+    <div class="setting-box" id="setting-area">
+        <label for="time-select" style="font-weight: bold; display:block; margin-bottom:5px;">集中する時間を選択：</label>
+        <select id="time-select">
+            <option value="10">10 分間</option>
+            <option value="20">20 分間</option>
+            <option value="30" selected>30 分間</option>
+            <option value="45">45 分間</option>
+            <option value="60">60 分間</option>
+            <option value="90">90 分間</option>
+        </select>
+    </div>
+
     <div id="countdown" class="countdown-overlay">3</div>
     <div class="timer-box">残り時間: <span id="timer">--:--</span></div>
     <div class="point-box">現在のポイント: <span id="points">0</span> pt</div>
     
-    <button id="start-btn">30分集中をスタート！</button>
+    <button id="start-btn">集中をスタート！</button>
     <div id="status-msg" class="alert"></div>
+</div>
+
+<!-- 💡 日別記録カレンダー（履歴リスト） -->
+<div class="history-container">
+    <div class="history-title">📅 日別の獲得ポイント記録</div>
+    <ul id="history-list" class="history-list">
+        <!-- ここにJavaScriptで過去の記録が追加されます -->
+    </ul>
 </div>
 
 <script>
     let timerInterval;
     let pointInterval;
     let countdownInterval;
-    let timeLeft = 30 * 60; // 30分（秒換算）
-    let points = 0;
+    let wakeLock = null;
+    
+    let defaultMinutes = 30;
+    let timeLeft = defaultMinutes * 60;
+    let currentSessionPoints = 0;
     let isRunning = false;
-    let isMonitoring = false; // 💡【新設】実際に監視を開始しているかどうかのフラグ
+    let isMonitoring = false;
 
+    // DOM要素の取得
     const timerEl = document.getElementById('timer');
     const pointsEl = document.getElementById('points');
     const startBtn = document.getElementById('start-btn');
     const statusMsg = document.getElementById('status-msg');
     const countdownEl = document.getElementById('countdown');
+    const timeSelect = document.getElementById('time-select');
+    const settingArea = document.getElementById('setting-area');
+    const historyListEl = document.getElementById('history-list');
+
+    // 💡 画面スリープ防止機能 (Wake Lock API)
+    async function requestWakeLock() {
+        try {
+            if ('wakeLock' in navigator) {
+                wakeLock = await navigator.wakeLock.request('screen');
+                console.log('画面スリープ防止が有効化されました');
+            }
+        } catch (err) {
+            console.warn('スリープ防止の起動に失敗:', err);
+        }
+    }
+
+    function releaseWakeLock() {
+        if (wakeLock !== null) {
+            wakeLock.release();
+            wakeLock = null;
+            console.log('画面スリープ防止を解除しました');
+        }
+    }
+
+    // 今日の日付を取得 (YYYY/MM/DD 形式)
+    function getTodayString() {
+        const today = new Date();
+        return `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
+    }
+
+    // 💡 ローカルストレージから履歴を読み込んで表示
+    function loadHistory() {
+        historyListEl.innerHTML = '';
+        const historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
+        
+        // 日付の降順（新しい順）に並び替えて表示
+        const sortedDates = Object.keys(historyData).sort((a, b) => b.localeCompare(a));
+        
+        if (sortedDates.length === 0) {
+            historyListEl.innerHTML = '<li class="history-item" style="color:#94a3b8;">まだ記録はありません。</li>';
+            return;
+        }
+
+        sortedDates.forEach(date => {
+            const li = document.createElement('li');
+            li.className = 'history-item';
+            li.innerHTML = `<span class="history-date">${date}</span><span class="history-pts">${historyData[date]} pt</span>`;
+            historyListEl.appendChild(li);
+        });
+    }
+
+    // 💡 ポイントを日別データに反映・保存する関数
+    function savePointsToHistory(ptsChange, isReset = false) {
+        const todayStr = getTodayString();
+        let historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
+        
+        if (!historyData[todayStr]) {
+            historyData[todayStr] = 0;
+        }
+
+        if (isReset) {
+            // 一度触っちゃうと、現時点の今日のポイントが0になる（ペナルティ）
+            historyData[todayStr] = 0;
+        } else {
+            // 成功時はポイントを加算
+            historyData[todayStr] += ptsChange;
+        }
+
+        localStorage.setItem('study_points_history', JSON.stringify(historyData));
+        loadHistory(); // 履歴表示を更新
+    }
 
     // スタートボタンが押されたとき
     startBtn.addEventListener('click', () => {
+        defaultMinutes = parseInt(timeSelect.value);
+        timeLeft = defaultMinutes * 60;
+        
         startBtn.disabled = true;
-        statusMsg.textContent = "📢 スマホを机に置いて、手を離してください！";
+        settingArea.style.opacity = "0.4"; // 設定エリアを薄くして触れなくする
+        timeSelect.disabled = true;
+        
+        statusMsg.textContent = "📢 スマホ/PCを平らな場所に置き、手を離してください！";
         statusMsg.style.color = "#e53e3e";
         countdownEl.style.display = "block";
         
-        let count = 3; // 3秒のカウントダウン
+        let count = 3;
         countdownEl.textContent = count;
 
         countdownInterval = setInterval(() => {
@@ -90,19 +193,25 @@
             } else {
                 clearInterval(countdownInterval);
                 countdownEl.style.display = "none";
-                actualStart(); // 💡 カウントダウン終了後に本当のスタート
+                actualStart();
             }
         }, 1000);
     });
 
-    // 本当のスタート処理（監視を開始する）
-    function actualStart() {
+    // 実際の監視スタート処理
+    async function actualStart() {
         isRunning = true;
-        isMonitoring = true; // 💡 ここから監視スタート（ボタンのクリック判定をスルーできる）
+        isMonitoring = true;
+        currentSessionPoints = 0;
+        pointsEl.textContent = currentSessionPoints;
+        
         statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
         statusMsg.style.color = "#dd6b20";
 
-        // カウントダウンタイマー (1秒ごと)
+        // スリープ防止を起動
+        await requestWakeLock();
+
+        // カウントダウンタイマー
         timerInterval = setInterval(() => {
             timeLeft--;
             let mins = Math.floor(timeLeft / 60);
@@ -114,20 +223,23 @@
             }
         }, 1000);
 
-        // ポイント加算 (5秒ごとに1ポイントたまる)
+        // ポイント加算 (5秒ごとに1ポイント)
         pointInterval = setInterval(() => {
-            points += 1;
-            pointsEl.textContent = points;
+            currentSessionPoints += 1;
+            pointsEl.textContent = currentSessionPoints;
         }, 5000);
     }
 
-    // ペナルティ（リセット）の処理
+    // 🚨 誘惑に負けた（ペナルティ）の処理
     function penalty() {
-        if (!isMonitoring) return; // 💡 監視中でなければペナルティにしない
+        if (!isMonitoring) return;
         
-        points = 0;
-        pointsEl.textContent = points;
-        statusMsg.textContent = "🚨 あ！画面を触ったか、別のページを見ましたね？ポイントがゼロになりました！";
+        // 今日の獲得ポイントを現時点で0にリセットする
+        savePointsToHistory(0, true);
+        
+        currentSessionPoints = 0;
+        pointsEl.textContent = currentSessionPoints;
+        statusMsg.textContent = "🚨 あ！触りましたね？本日の獲得ポイントが0にリセットされました！";
         statusMsg.style.color = "#e53e3e";
         endSession(false);
     }
@@ -136,18 +248,24 @@
     function endSession(isSuccess) {
         clearInterval(timerInterval);
         clearInterval(pointInterval);
+        releaseWakeLock(); // スリープ防止を解除
+        
         isRunning = false;
-        isMonitoring = false; // 💡 監視終了
+        isMonitoring = false;
         startBtn.disabled = false;
-        timeLeft = 30 * 60;
+        timeSelect.disabled = false;
+        settingArea.style.opacity = "1";
         timerEl.textContent = "--:--";
+        
         if (isSuccess) {
-            statusMsg.textContent = "🎉 おめでとうございます！集中達成です！";
+            // 集中成功：このセッションで稼いだポイントを今日の記録にプラスする
+            savePointsToHistory(currentSessionPoints, false);
+            statusMsg.textContent = `🎉 おめでとうございます！集中達成で ${currentSessionPoints} pt 獲得しました！`;
             statusMsg.style.color = "#38a169";
         }
     }
 
-    // 💡 触ったこと・離れたことを検知するイベントリスナー
+    // 操作検知イベントリスナー
     window.addEventListener('touchstart', penalty);
     window.addEventListener('click', penalty);
     window.addEventListener('mousemove', () => {
@@ -159,7 +277,9 @@
             penalty();
         }
     });
+
+    // 💡 画面を最初から開いたときに履歴を読み込む
+    loadHistory();
 </script>
 
 </body>
-</html>
