@@ -1,253 +1,171 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>集中勉強タイマー ＆ カレンダー記録</title>
-    <style>
-        body {
-            font-family: 'Helvetica Neue', Arial, sans-serif;
-            text-align: center;
-            background-color: #f0f4f8;
-            color: #333;
-            padding: 30px 10px;
-            margin: 0;
-            overflow: hidden;
-        }
-        .container {
-            max-width: 450px;
-            margin: 0 auto 30px auto;
-            background: white;
-            padding: 30px;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-        }
-        h1 { color: #2b6cb0; margin-top: 0; }
-        .setting-box { margin: 20px 0; }
-        select { padding: 10px; font-size: 1.1rem; border-radius: 5px; width: 100%; border: 1px solid #cbd5e0; }
-        .point-box, .timer-box { font-size: 2.2rem; font-weight: bold; margin: 15px 0; }
-        .point-box { color: #dd6b20; }
-        .timer-box { color: #4a5568; }
-        button {
-            background-color: #3182ce; color: white; border: none; padding: 15px 30px;
-            font-size: 1.2rem; font-weight: bold; border-radius: 5px; cursor: pointer; width: 100%;
-        }
-        button:hover { background-color: #2b6cb0; }
-        button:disabled { background-color: #cbd5e0; cursor: not-allowed; }
-        .alert { color: #e53e3e; font-weight: bold; margin-top: 15px; font-size: 1.1rem; min-height: 50px; }
-        .countdown-overlay { font-size: 3.5rem; color: #e53e3e; font-weight: bold; margin: 15px 0; display: none; }
-        
-        .history-container { max-width: 450px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: left; }
-        .history-title { font-size: 1.3rem; font-weight: bold; color: #2c5282; border-bottom: 2px solid #ebf8ff; padding-bottom: 8px; margin-bottom: 15px; }
-        .history-list { list-style: none; padding: 0; margin: 0; max-height: 250px; overflow-y: auto; }
-        .history-item { display: flex; justify-content: space-between; padding: 10px 5px; border-bottom: 1px solid #edf2f7; font-size: 1.1rem; }
-        .history-date { font-weight: bold; color: #4a5568; }
-        .history-pts { font-weight: bold; color: #dd6b20; }
-
-        /* 💡 マウス移動を偽装するためのダミー要素 */
-        #mouse-fake-area {
-            position: absolute;
-            top: 0; left: 0; width: 100vw; height: 100vh;
-            z-index: -1; pointer-events: none;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MP4 to GIF Converter</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#17191f;color:#f2f3f7;font-family:Arial,sans-serif;padding:30px}
+main{max-width:850px;margin:auto}
+h1{font-size:28px;margin-bottom:8px}
+.sub{color:#9da3b2;margin-bottom:25px}
+.panel{background:#222630;border:1px solid #353b49;border-radius:14px;padding:22px;margin:16px 0}
+button,.filebtn{background:#8b7cff;color:white;border:0;border-radius:8px;padding:12px 18px;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.4;cursor:not-allowed}
+input[type=file]{display:none}
+video{width:100%;max-height:380px;background:#08090c;border-radius:9px;margin-top:15px}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:15px}
+label{display:block;color:#bfc4d0;font-size:13px;margin-bottom:7px}
+input[type=number],input[type=range]{width:100%}
+input[type=number]{background:#171a21;color:white;border:1px solid #454c5b;padding:10px;border-radius:7px}
+.actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+#status{color:#bcb4ff;margin-top:15px;white-space:pre-wrap}
+#preview{max-width:100%;margin-top:15px;border-radius:8px}
+a{color:#bcb4ff}
+@media(max-width:550px){body{padding:15px}.grid{grid-template-columns:1fr}}
+</style>
 </head>
 <body>
+<main>
+<h1>MP4 → GIF Converter</h1>
+<div class="sub">動画をGIFアニメーションに変換</div>
 
-<div id="mouse-fake-area"></div>
+<section class="panel">
+<label class="filebtn" for="file">MP4ファイルを選択</label>
+<input id="file" type="file" accept="video/mp4,video/*">
+<video id="video" controls></video>
+<div id="filename" class="sub">動画が選択されていません</div>
+</section>
 
-<div class="container">
-    <h1>🔥 集中勉強タイマー</h1>
-    <p>スタートしたら画面を触ったり別タブを開いたりしないでください！</p>
-    
-    <div class="setting-box" id="setting-area">
-        <label for="time-select" style="font-weight: bold; display:block; margin-bottom:5px;">集中する時間を選択：</label>
-        <select id="time-select">
-            <option value="10">10 分間</option>
-            <option value="20">20 分間</option>
-            <option value="30" selected>30 分間</option>
-            <option value="45">45 分間</option>
-            <option value="60">60 分間</option>
-            <option value="90">90 分間</option>
-        </select>
-    </div>
-
-    <div id="countdown" class="countdown-overlay">3</div>
-    <div class="timer-box">残り時間: <span id="timer">--:--</span></div>
-    <div class="point-box">現在のポイント: <span id="points">0</span> pt</div>
-    
-    <button id="start-btn">集中をスタート！</button>
-    <div id="status-msg" class="alert"></div>
+<section class="panel">
+<h3>変換設定</h3>
+<div class="grid">
+<div><label>開始時間（秒）</label><input id="start" type="number" min="0" value="0" step="0.1"></div>
+<div><label>終了時間（秒）</label><input id="end" type="number" min="0" value="3" step="0.1"></div>
+<div><label>GIFの幅（px）</label><input id="width" type="number" min="50" max="1200" value="480"></div>
+<div><label>FPS</label><input id="fps" type="number" min="1" max="30" value="12"></div>
 </div>
-
-<div class="history-container">
-    <div class="history-title">📅 日別の獲得ポイント記録</div>
-    <ul id="history-list" class="history-list"></ul>
+<div class="actions">
+<button id="convert" disabled>GIFに変換する</button>
 </div>
+<div id="status">動画を読み込んでください。</div>
+</section>
 
+<section class="panel">
+<h3>変換結果</h3>
+<img id="preview" hidden>
+<div class="actions">
+<a id="download" hidden download="converted.gif">GIFを保存</a>
+</div>
+</section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/gif.js.optimized/dist/gif.js"></script>
 <script>
-    let timerInterval;
-    let pointInterval;
-    let countdownInterval;
-    let moveMouseInterval; // 💡 擬似マウス移動用
-    let wakeLock = null;
-    
-    let defaultMinutes = 30;
-    let timeLeft = defaultMinutes * 60;
-    let currentSessionPoints = 0;
-    let isRunning = false;
-    let isMonitoring = false;
-    
-    let fakeToggle = false; 
-    let lastFakeTime = 0; // 💡 自分が起こしたイベントを区別するため
+const fileInput=document.getElementById('file');
+const video=document.getElementById('video');
+const convert=document.getElementById('convert');
+const status=document.getElementById('status');
+const preview=document.getElementById('preview');
+const download=document.getElementById('download');
+let videoURL=null;
 
-    const timerEl = document.getElementById('timer');
-    const pointsEl = document.getElementById('points');
-    const startBtn = document.getElementById('start-btn');
-    const statusMsg = document.getElementById('status-msg');
-    const countdownEl = document.getElementById('countdown');
-    const timeSelect = document.getElementById('time-select');
-    const settingArea = document.getElementById('setting-area');
-    const historyListEl = document.getElementById('history-list');
-    const fakeArea = document.getElementById('mouse-fake-area');
+fileInput.addEventListener('change',()=>{
+ const file=fileInput.files[0];
+ if(!file)return;
+ if(videoURL)URL.revokeObjectURL(videoURL);
+ videoURL=URL.createObjectURL(file);
+ video.src=videoURL;
+ document.getElementById('filename').textContent=file.name;
+ video.onloadedmetadata=()=>{
+  document.getElementById('start').value=0;
+  document.getElementById('end').value=Math.min(3,video.duration).toFixed(1);
+  convert.disabled=false;
+  status.textContent='動画を読み込みました。';
+ };
+});
 
-    async function requestWakeLock() {
-        if ('wakeLock' in navigator) {
-            try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) {}
-        }
-    }
+convert.addEventListener('click',async()=>{
+ if(typeof GIF==='undefined'){
+  status.textContent='変換エンジンを読み込めませんでした。インターネット接続を確認してください。';
+  return;
+ }
+ const start=Number(document.getElementById('start').value);
+ const end=Number(document.getElementById('end').value);
+ const width=Number(document.getElementById('width').value);
+ const fps=Number(document.getElementById('fps').value);
 
-    function releaseWakeLock() {
-        if (wakeLock !== null) { wakeLock.release().then(() => { wakeLock = null; }); }
-    }
+ if(!video.src||end<=start||start<0||end>video.duration||width<50||fps<1){
+  status.textContent='設定値を確認してください。';
+  return;
+ }
+ if(end-start>20){
+  status.textContent='一度に変換できる長さは20秒までです。';
+  return;
+ }
 
-    function getTodayString() {
-        const today = new Date();
-        return `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
-    }
+ convert.disabled=true;
+ preview.hidden=true;
+ download.hidden=true;
+ status.textContent='GIFを作成しています...';
 
-    // 履歴読み込み・保存
-    function loadHistory() {
-        historyListEl.innerHTML = '';
-        const historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
-        const sortedDates = Object.keys(historyData).sort((a, b) => b.localeCompare(a));
-        if (sortedDates.length === 0) {
-            historyListEl.innerHTML = '<li class="history-item" style="color:#94a3b8;">まだ記録はありません。</li>';
-            return;
-        }
-        sortedDates.forEach(date => {
-            const li = document.createElement('li');
-            li.className = 'history-item';
-            li.innerHTML = `<span class="history-date">${date}</span><span class="history-pts">${historyData[date]} pt</span>`;
-            historyListEl.appendChild(li);
-        });
-    }
+ try{
+  const ratio=video.videoHeight/video.videoWidth;
+  const height=Math.max(1,Math.round(width*ratio));
+  const canvas=document.createElement('canvas');
+  canvas.width=width;
+  canvas.height=height;
+  const ctx=canvas.getContext('2d',{willReadFrequently:true});
+  const gif=new GIF({
+   workers:2,
+   quality:10,
+   width,
+   height,
+   workerScript:'https://cdn.jsdelivr.net/npm/gif.js.optimized/dist/gif.worker.js'
+  });
+  const total=Math.floor((end-start)*fps);
+  const frameDelay=1000/fps;
 
-    function savePointsToHistory(ptsChange, isReset = false) {
-        const todayStr = getTodayString();
-        let historyData = JSON.parse(localStorage.getItem('study_points_history')) || {};
-        if (!historyData[todayStr]) historyData[todayStr] = 0;
-        if (isReset) { historyData[todayStr] = 0; } else { historyData[todayStr] += ptsChange; }
-        localStorage.setItem('study_points_history', JSON.stringify(historyData));
-        loadHistory();
-    }
+  for(let i=0;i<total;i++){
+   const time=start+i/fps;
+   await new Promise((resolve,reject)=>{
+    const onSeek=()=>{video.removeEventListener('seeked',onSeek);resolve()};
+    video.addEventListener('seeked',onSeek);
+    video.currentTime=time;
+    setTimeout(()=>{
+     video.removeEventListener('seeked',onSeek);
+     resolve();
+    },2000);
+   });
+   ctx.drawImage(video,0,0,width,height);
+   gif.addFrame(ctx,{copy:true,delay:frameDelay});
+   status.textContent=`フレームを準備中... ${i+1}/${total}`;
+  }
 
-    startBtn.addEventListener('click', () => {
-        defaultMinutes = parseInt(timeSelect.value);
-        timeLeft = defaultMinutes * 60;
-        startBtn.disabled = true;
-        settingArea.style.opacity = "0.4";
-        timeSelect.disabled = true;
-        statusMsg.textContent = "📢 マウスから手を離し、キーボードに触らないでください！";
-        statusMsg.style.color = "#e53e3e";
-        countdownEl.style.display = "block";
-        
-        let count = 3;
-        countdownEl.textContent = count;
-        countdownInterval = setInterval(() => {
-            count--;
-            if (count > 0) { countdownEl.textContent = count; } else {
-                clearInterval(countdownInterval);
-                countdownEl.style.display = "none";
-                actualStart();
-            }
-        }, 1000);
-    });
-
-    async function actualStart() {
-        isRunning = true;
-        isMonitoring = true;
-        currentSessionPoints = 0;
-        pointsEl.textContent = currentSessionPoints;
-        statusMsg.textContent = "⏳ 集中時間中... 触っちゃダメ！";
-        statusMsg.style.color = "#dd6b20";
-
-        await requestWakeLock();
-
-        // 💡【最重要】1秒ごとにブラウザ内で「マウス移動イベント」を発生させてWindowsの30秒ロックを破壊する
-        moveMouseInterval = setInterval(() => {
-            fakeToggle = !fakeToggle;
-            const fakeEvent = new MouseEvent('mousemove', {
-                clientX: fakeToggle ? 100 : 101, // 1ピクセルだけ位置を動かす
-                clientY: fakeToggle ? 100 : 101,
-                bubbles: true
-            });
-            lastFakeTime = Date.now(); // 💡「今プログラムが動かしたよ」という時間を記録
-            fakeArea.dispatchEvent(fakeEvent);
-        }, 1000);
-
-        timerInterval = setInterval(() => {
-            timeLeft--;
-            let mins = Math.floor(timeLeft / 60);
-            let secs = timeLeft % 60;
-            timerEl.textContent = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-            if (timeLeft <= 0) { endSession(true); }
-        }, 1000);
-
-        pointInterval = setInterval(() => {
-            currentSessionPoints += 1;
-            pointsEl.textContent = currentSessionPoints;
-        }, 5000);
-    }
-
-    // 🚨 誘惑に負けた（ペナルティ）の処理
-    function penalty(e) {
-        if (!isMonitoring) return;
-
-        // 💡 プログラム自身が10ミリ秒以内に発生させたマウス移動イベントなら、ペナルティにせずスルーする
-        if (e.type === 'mousemove' && (Date.now() - lastFakeTime < 10)) {
-            return; 
-        }
-        
-        savePointsToHistory(0, true);
-        currentSessionPoints = 0;
-        pointsEl.textContent = currentSessionPoints;
-        statusMsg.textContent = "🚨 あ！PCを操作しましたね？本日の獲得ポイントが0にリセットされました！";
-        statusMsg.style.color = "#e53e3e";
-        endSession(false);
-    }
-
-    function endSession(isSuccess) {
-        clearInterval(timerInterval);
-        clearInterval(pointInterval);
-        clearInterval(moveMouseInterval); // 💡 擬似マウス移動を停止
-        releaseWakeLock();
-        
-        isRunning = false;
-        isMonitoring = false;
-        startBtn.disabled = false;
-        timeSelect.disabled = false;
-        settingArea.style.opacity = "1";
-        timerEl.textContent = "--:--";
-        
-        if (isSuccess) {
-            savePointsToHistory(currentSessionPoints, false);
-            statusMsg.textContent = `🎉 おめでとうございます！集中達成で ${currentSessionPoints} pt 獲得しました！`;
-            statusMsg.style.color = "#38a169";
-        }
-    }
-
-    // 💡 本物の人間が触ったかどうかを検知（キーボード入力もペナルティ対象に追加）
-    window.addEventListener('click', penalty);
-    window.addEventListener('touchstart', penalty);
-    window.addEventListener('keydown', penalty); // キーボードを叩いてもアウト
+  gif.on('progress',p=>{
+   status.textContent=`GIFを生成中... ${Math.round(p*100)}%`;
+  });
+  gif.on('finished',blob=>{
+   const url=URL.createObjectURL(blob);
+   preview.src=url;
+   preview.hidden=false;
+   download.href=url;
+   download.hidden=false;
+   status.textContent='変換完了！GIFを保存できます。';
+   download.click();
+   convert.disabled=false;
+  });
+  gif.on('error',err=>{
+   status.textContent='変換エラー: '+err;
+   convert.disabled=false;
+  });
+  gif.render();
+ }catch(err){
+  status.textContent='エラー: '+err.message;
+  convert.disabled=false;
+ }
+});
+</script>
+</body>
+</html>
